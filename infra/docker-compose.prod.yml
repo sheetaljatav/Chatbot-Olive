@@ -1,0 +1,58 @@
+# Production overlay — layer on top of the base compose file:
+#
+#   docker compose -f infra/docker-compose.yml -f infra/docker-compose.prod.yml \
+#     --env-file .env up -d --build
+#
+# What it changes vs. local:
+#   - Adds a Caddy reverse proxy terminating HTTPS (auto Let's Encrypt) on the
+#     domain in $DOMAIN. Caddy serves the web app and proxies /api/* to chat-api
+#     on the SAME origin, so the browser uses NEXT_PUBLIC_CHAT_API_URL="/api"
+#     (no public URL needed at build time, no CORS).
+#   - Builds web with that /api value baked in.
+#   - Stops publishing internal service ports to the host (only Caddy is public).
+#
+# Requires Docker Compose v2.24+ for the `!reset` list directive.
+services:
+  web:
+    build:
+      args:
+        NEXT_PUBLIC_CHAT_API_URL: /api
+    environment:
+      NEXT_PUBLIC_CHAT_API_URL: /api
+      CHAT_API_URL: http://chat-api:8000
+    ports: !reset []
+
+  chat-api:
+    environment:
+      # Same-origin frontend → CORS not strictly needed, but keep it permissive.
+      CORS_ORIGINS: "*"
+    ports: !reset []
+
+  ingestion-api:
+    ports: !reset []
+
+  postgres:
+    ports: !reset []
+
+  redis:
+    ports: !reset []
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - web
+      - chat-api
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env to your public hostname}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

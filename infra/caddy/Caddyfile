@@ -1,0 +1,20 @@
+# Caddy reverse proxy with automatic HTTPS (Let's Encrypt).
+# $DOMAIN is injected from the environment by docker-compose.prod.yml.
+#
+# Routing (single origin):
+#   /api/*  -> chat-api:8000  (the /api prefix is stripped before proxying,
+#              so the browser calls /api/chat and chat-api receives /chat)
+#   /*      -> web:3000       (the Next.js app)
+#
+# Streaming (SSE) works out of the box: Caddy flushes proxied responses and
+# does not buffer, so chat deltas reach the browser immediately.
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	handle_path /api/* {
+		reverse_proxy chat-api:8000
+	}
+
+	reverse_proxy web:3000
+}
