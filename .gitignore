@@ -37,3 +37,7 @@ infra/.volumes/
 
 # Assignment / reference docs (not part of the codebase)
 *.pdf
+
+# Internal-only docs (kept locally, not published)
+DEPLOY.md
+TESTING.md
