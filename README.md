@@ -77,7 +77,11 @@ for img in chat-api ingestion-api worker web; do kind load docker-image chatbot/
 # install nginx ingress, then:
 cp infra/k8s/secret.example.yaml infra/k8s/secret.yaml   # fill in keys
 kubectl apply -f infra/k8s/secret.yaml
-kubectl apply -k infra/k8s
+
+# init.sql lives outside infra/k8s (it is shared with docker-compose), so the
+# configMapGenerator references a parent path. Render with the load restrictor
+# relaxed and pipe to apply — plain `kubectl apply -k` cannot relax it.
+kubectl kustomize --load-restrictor LoadRestrictionsNone infra/k8s | kubectl apply -f -
 ```
 
 ---

@@ -119,7 +119,13 @@ k8s-secret:                  ## Apply the secret (copy secret.example.yaml → s
 
 .PHONY: k8s-deploy
 k8s-deploy:                  ## Deploy all manifests via kustomize
-	kubectl apply -k infra/k8s
+	# init.sql is sourced from outside the kustomize root (../postgres), so the
+	# default load restrictor blocks it; render with it relaxed, then apply.
+	kubectl kustomize --load-restrictor LoadRestrictionsNone infra/k8s | kubectl apply -f -
+
+.PHONY: k8s-delete
+k8s-delete:                  ## Delete all manifests (keeps the cluster)
+	kubectl kustomize --load-restrictor LoadRestrictionsNone infra/k8s | kubectl delete -f -
 
 .PHONY: k8s-status
 k8s-status:                  ## Show pod status in the chatbot namespace

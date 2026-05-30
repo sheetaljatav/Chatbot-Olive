@@ -296,7 +296,7 @@ make k8s-secret
 make k8s-deploy
 ```
 
-This runs `kubectl apply -k infra/k8s`. Kustomize embeds `infra/postgres/init.sql` into a ConfigMap automatically.
+This renders the manifests with kustomize and pipes them to `kubectl apply`. Kustomize embeds `infra/postgres/init.sql` into a ConfigMap automatically — and because that file lives outside the kustomize root, the target relaxes the load restrictor (`--load-restrictor LoadRestrictionsNone`). Plain `kubectl apply -k infra/k8s` will fail with a security error, which is why we render-then-pipe instead.
 
 ### 5 — Watch pods come up
 
@@ -334,7 +334,8 @@ Then open http://localhost:3000.
 
 ```bash
 # Just delete deployments (keeps the cluster):
-kubectl delete -k infra/k8s
+make k8s-delete
+# (equivalent to: kubectl kustomize --load-restrictor LoadRestrictionsNone infra/k8s | kubectl delete -f -)
 
 # Full cluster removal:
 make k8s-down
