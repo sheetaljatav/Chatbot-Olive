@@ -1,0 +1,31 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: chatbot
+  namespace: chatbot
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"   # SSE needs unbuffered
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /api/logs
+            pathType: Prefix
+            backend:
+              service:
+                name: ingestion-api
+                port: { number: 8001 }
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: chat-api
+                port: { number: 8000 }
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port: { number: 3000 }

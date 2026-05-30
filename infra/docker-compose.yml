@@ -1,0 +1,111 @@
+# One-command setup: `docker compose --env-file .env up --build`
+# from the repo root (the build context is `..` so each service can COPY both
+# its own folder and the shared packages/llm_logger directory).
+
+name: chatbot
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-chatbot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chatbot}
+      POSTGRES_DB: ${POSTGRES_DB:-chatbot}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chatbot}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  ingestion-api:
+    build:
+      context: ..
+      dockerfile: apps/ingestion-api/Dockerfile
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      EVENT_STREAM: ${EVENT_STREAM:-llm.events}
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ..
+      dockerfile: apps/worker/Dockerfile
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-chatbot}:${POSTGRES_PASSWORD:-chatbot}@postgres:5432/${POSTGRES_DB:-chatbot}
+      EVENT_STREAM: ${EVENT_STREAM:-llm.events}
+      EVENT_DLQ: ${EVENT_DLQ:-llm.events.dlq}
+      EVENT_GROUP: ${EVENT_GROUP:-workers}
+      PII_REDACTION_ENABLED: ${PII_REDACTION_ENABLED:-true}
+      PII_ENTITIES: ${PII_ENTITIES:-EMAIL_ADDRESS,PHONE_NUMBER,CREDIT_CARD,US_SSN,IP_ADDRESS}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  chat-api:
+    build:
+      context: ..
+      dockerfile: apps/chat-api/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-chatbot}:${POSTGRES_PASSWORD:-chatbot}@postgres:5432/${POSTGRES_DB:-chatbot}
+      INGESTION_URL: http://ingestion-api:8001
+      PROVIDER: ${PROVIDER:-gemini}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-1.5-flash}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-3-5-haiku-latest}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
+      CONTEXT_TURN_LIMIT: ${CONTEXT_TURN_LIMIT:-12}
+      CORS_ORIGINS: "*"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ingestion-api:
+        condition: service_started
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+    environment:
+      NEXT_PUBLIC_CHAT_API_URL: http://localhost:8000
+      CHAT_API_URL: http://chat-api:8000
+    depends_on:
+      - chat-api
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+volumes:
+  pgdata:

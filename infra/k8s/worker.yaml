@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: chatbot
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: worker }
+  template:
+    metadata:
+      labels: { app: worker }
+    spec:
+      containers:
+        - name: worker
+          image: chatbot/worker:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef: { name: chatbot-config }
+          env:
+            - name: HOSTNAME
+              valueFrom:
+                fieldRef: { fieldPath: metadata.name }
