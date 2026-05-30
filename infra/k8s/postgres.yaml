@@ -8,18 +8,10 @@ spec:
   resources:
     requests:
       storage: 5Gi
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: postgres-init
-  namespace: chatbot
-data:
-  init.sql: |
-    -- (Placeholder: in a real deploy, mount the contents of infra/postgres/init.sql
-    -- here, or use a kustomize configMapGenerator. Keeping it short in the
-    -- example manifest; see README for the kustomize-based setup.)
-    CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+# NOTE: the `postgres-init` ConfigMap (containing the full schema) is produced
+# by the configMapGenerator in kustomization.yaml from infra/postgres/init.sql,
+# so it is intentionally NOT defined inline here (doing so would collide with
+# the generated one). The StatefulSet below mounts it by name.
 ---
 apiVersion: apps/v1
 kind: StatefulSet

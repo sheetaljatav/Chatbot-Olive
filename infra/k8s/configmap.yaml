@@ -5,7 +5,7 @@ metadata:
   namespace: chatbot
 data:
   PROVIDER: "gemini"
-  GEMINI_MODEL: "gemini-1.5-flash"
+  GEMINI_MODEL: "gemini-2.5-flash"
   EVENT_STREAM: "llm.events"
   EVENT_DLQ: "llm.events.dlq"
   EVENT_GROUP: "workers"
