@@ -1,0 +1,33 @@
+# Keep the Docker build context small & deterministic. All services build from
+# the repo root, so excludes here apply to every image build.
+
+# Node / Next.js
+**/node_modules
+**/.next
+**/out
+**/.turbo
+
+# Python
+**/__pycache__
+**/*.py[cod]
+**/.venv
+**/venv
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/*.egg-info
+
+# VCS / tooling / local
+.git
+.gitignore
+.claude
+.vscode
+.idea
+.DS_Store
+
+# Secrets & docs not needed at build time
+.env
+.env.local
+.env.*.local
+*.pdf
+*.md

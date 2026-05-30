@@ -1,18 +1,7 @@
+/* Tailwind layers. Kept available for the few layout utilities still used in
+ * server components; all bespoke styling lives in design tokens + CSS Modules.
+ * Tokens and base styles are imported (in order) from layout.tsx so our base
+ * layer loads after Tailwind's preflight and wins where they overlap. */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-:root {
-  color-scheme: light dark;
-}
-
-html, body {
-  height: 100%;
-}
-
-body {
-  background: #0b0d10;
-  color: #e7e9ee;
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, sans-serif;
-}

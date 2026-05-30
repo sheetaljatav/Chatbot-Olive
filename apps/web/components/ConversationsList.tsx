@@ -4,6 +4,21 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { API_BASE, Conversation } from "@/lib/api";
+import { cx } from "@/lib/cx";
+import styles from "./ConversationsList.module.css";
+
+function relativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  const diff = Date.now() - then;
+  const mins = Math.round(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.round(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
 
 export default function ConversationsList({
   initial,
@@ -23,50 +38,78 @@ export default function ConversationsList({
     }
   };
 
-  if (items.length === 0) {
-    return <div className="text-zinc-500 text-sm">No conversations yet.</div>;
-  }
-
   return (
-    <ul className="space-y-2">
-      {items.map((c) => (
-        <li
-          key={c.id}
-          className="border border-zinc-800 rounded-xl p-3 hover:bg-zinc-900 flex justify-between items-center gap-3"
-        >
-          <Link
-            href={`/conversations/${c.id}`}
-            className="flex-1 min-w-0"
-          >
-            <div className="font-medium text-sm truncate">
-              {c.title || <span className="text-zinc-500">untitled</span>}
-            </div>
-            <div className="text-xs text-zinc-500 mt-1">
-              {c.message_count ?? 0} messages · updated{" "}
-              {new Date(c.updated_at).toLocaleString()}
-            </div>
+    <section className={styles.page}>
+      <header className={styles.head}>
+        <div>
+          <h1 className={styles.title}>Conversations</h1>
+          <p className={styles.subtitle}>
+            {items.length} {items.length === 1 ? "conversation" : "conversations"}
+          </p>
+        </div>
+        <Link href="/" className={styles.newBtn}>
+          <span className={styles.plus} aria-hidden>+</span>
+          New chat
+        </Link>
+      </header>
+
+      {items.length === 0 ? (
+        <div className={styles.empty}>
+          <p className={styles.emptyTitle}>No conversations yet</p>
+          <p className={styles.emptySub}>
+            Start chatting and your history will appear here.
+          </p>
+          <Link href="/" className={styles.newBtn}>
+            <span className={styles.plus} aria-hidden>+</span>
+            Start a chat
           </Link>
-          <span
-            className={`text-xs px-2 py-1 rounded-full ${
-              c.status === "active"
-                ? "bg-emerald-900 text-emerald-300"
-                : c.status === "cancelled"
-                ? "bg-red-900 text-red-300"
-                : "bg-zinc-800 text-zinc-400"
-            }`}
-          >
-            {c.status}
-          </span>
-          {c.status === "active" && (
-            <button
-              onClick={() => cancel(c.id)}
-              className="text-xs px-3 py-1 rounded-lg border border-red-900 text-red-300 hover:bg-red-950"
-            >
-              Cancel
-            </button>
-          )}
-        </li>
-      ))}
-    </ul>
+        </div>
+      ) : (
+        <ul className={styles.list}>
+          {items.map((c) => (
+            <li key={c.id} className={styles.card}>
+              <Link href={`/conversations/${c.id}`} className={styles.cardLink}>
+                <div className={styles.cardMain}>
+                  <span className={styles.cardTitle}>
+                    {c.title || <span className={styles.untitled}>Untitled</span>}
+                  </span>
+                  <span className={styles.meta}>
+                    {c.message_count ?? 0} messages · {relativeTime(c.updated_at)}
+                  </span>
+                </div>
+              </Link>
+
+              <div className={styles.cardActions}>
+                <StatusBadge status={c.status} />
+                {c.status === "active" && (
+                  <button
+                    onClick={() => cancel(c.id)}
+                    className={styles.cancelBtn}
+                  >
+                    Cancel
+                  </button>
+                )}
+                <span className={styles.chevron} aria-hidden>›</span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function StatusBadge({ status }: { status: Conversation["status"] }) {
+  const tone =
+    status === "active"
+      ? styles.badgeOk
+      : status === "cancelled"
+      ? styles.badgeErr
+      : styles.badgeNeutral;
+  return (
+    <span className={cx(styles.badge, tone)}>
+      <span className={styles.dot} aria-hidden />
+      {status}
+    </span>
   );
 }

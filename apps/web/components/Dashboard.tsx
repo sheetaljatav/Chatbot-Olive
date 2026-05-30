@@ -2,6 +2,8 @@
 
 import useSWR from "swr";
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
@@ -15,6 +17,8 @@ import {
 } from "recharts";
 
 import { swrFetcher } from "@/lib/api";
+import { cx } from "@/lib/cx";
+import styles from "./Dashboard.module.css";
 
 interface Summary {
   total: number;
@@ -50,6 +54,17 @@ interface ModelRow {
 const REFRESH_MS = 5000;
 const WINDOW_MINUTES = 60;
 
+/* Mirrors the --chart-* tokens in tokens.css (SVG attrs can't read CSS vars). */
+const CHART = {
+  grid: "rgba(255,255,255,0.06)",
+  axis: "#6e7480",
+  requests: "#6d6afc",
+  p50: "#34d399",
+  p95: "#f59e0b",
+  errors: "#f87171",
+  completion: "#9d6bff",
+} as const;
+
 export default function Dashboard() {
   const { data: summary } = useSWR<Summary>(
     `/metrics/summary?window=${WINDOW_MINUTES}`,
@@ -69,137 +84,266 @@ export default function Dashboard() {
 
   const seriesFmt = (series || []).map((p) => ({
     ...p,
-    bucket: new Date(p.bucket).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    bucket: new Date(p.bucket).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
   }));
 
-  return (
-    <div className="p-6 space-y-6">
-      <h1 className="text-lg font-semibold">Dashboard · last {WINDOW_MINUTES}m</h1>
+  const errorRate = (summary?.error_rate ?? 0) * 100;
+  const highError = errorRate > 5;
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Stat label="Requests" value={summary?.total ?? 0} />
+  return (
+    <div className={styles.page}>
+      <header className={styles.head}>
+        <div>
+          <h1 className={styles.title}>Observability</h1>
+          <p className={styles.subtitle}>
+            Inference metrics · last {WINDOW_MINUTES} minutes
+          </p>
+        </div>
+        <span className={styles.live}>
+          <span className={styles.liveDot} aria-hidden />
+          Live · {REFRESH_MS / 1000}s
+        </span>
+      </header>
+
+      <div className={styles.stats}>
+        <Stat label="Requests" value={fmt(summary?.total)} accent="indigo" />
         <Stat
           label="Error rate"
-          value={`${((summary?.error_rate ?? 0) * 100).toFixed(1)}%`}
-          accent={(summary?.error_rate ?? 0) > 0.05 ? "red" : "default"}
+          value={`${errorRate.toFixed(1)}%`}
+          accent={highError ? "red" : "green"}
         />
-        <Stat label="p95 latency" value={`${summary?.p95 ?? 0} ms`} />
-        <Stat label="Tokens" value={summary?.tokens ?? 0} />
+        <Stat label="p95 latency" value={`${fmt(summary?.p95)} ms`} accent="amber" />
+        <Stat label="Total tokens" value={fmt(summary?.tokens)} accent="violet" />
       </div>
 
-      <Panel title="Requests per minute">
-        <ResponsiveContainer width="100%" height={260}>
-          <LineChart data={seriesFmt}>
-            <CartesianGrid stroke="#27272a" strokeDasharray="3 3" />
-            <XAxis dataKey="bucket" stroke="#71717a" fontSize={12} />
-            <YAxis stroke="#71717a" fontSize={12} />
-            <Tooltip contentStyle={tooltipStyle} />
-            <Legend />
-            <Line type="monotone" dataKey="requests" stroke="#3b82f6" dot={false} />
-            <Line type="monotone" dataKey="errors" stroke="#ef4444" dot={false} />
-          </LineChart>
-        </ResponsiveContainer>
-      </Panel>
+      <div className={styles.grid}>
+        <Panel title="Requests per minute" className={styles.spanWide}>
+          <ResponsiveContainer width="100%" height={260}>
+            <AreaChart data={seriesFmt} margin={chartMargin}>
+              <defs>
+                <linearGradient id="gReq" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={CHART.requests} stopOpacity={0.4} />
+                  <stop offset="100%" stopColor={CHART.requests} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke={CHART.grid} vertical={false} />
+              <XAxis dataKey="bucket" {...axisProps} />
+              <YAxis {...axisProps} allowDecimals={false} />
+              <Tooltip content={<ChartTooltip />} cursor={cursorStyle} />
+              <Area
+                type="monotone"
+                dataKey="requests"
+                stroke={CHART.requests}
+                strokeWidth={2}
+                fill="url(#gReq)"
+              />
+              <Area
+                type="monotone"
+                dataKey="errors"
+                stroke={CHART.errors}
+                strokeWidth={2}
+                fillOpacity={0}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </Panel>
 
-      <Panel title="Latency (p50 / p95)">
-        <ResponsiveContainer width="100%" height={260}>
-          <LineChart data={seriesFmt}>
-            <CartesianGrid stroke="#27272a" strokeDasharray="3 3" />
-            <XAxis dataKey="bucket" stroke="#71717a" fontSize={12} />
-            <YAxis stroke="#71717a" fontSize={12} />
-            <Tooltip contentStyle={tooltipStyle} />
-            <Legend />
-            <Line type="monotone" dataKey="p50" stroke="#10b981" dot={false} />
-            <Line type="monotone" dataKey="p95" stroke="#f59e0b" dot={false} />
-          </LineChart>
-        </ResponsiveContainer>
-      </Panel>
+        <Panel title="Latency p50 / p95" className={styles.spanWide}>
+          <ResponsiveContainer width="100%" height={260}>
+            <LineChart data={seriesFmt} margin={chartMargin}>
+              <CartesianGrid stroke={CHART.grid} vertical={false} />
+              <XAxis dataKey="bucket" {...axisProps} />
+              <YAxis {...axisProps} unit="ms" />
+              <Tooltip content={<ChartTooltip unit="ms" />} cursor={cursorStyle} />
+              <Line
+                type="monotone"
+                dataKey="p50"
+                stroke={CHART.p50}
+                strokeWidth={2}
+                dot={false}
+              />
+              <Line
+                type="monotone"
+                dataKey="p95"
+                stroke={CHART.p95}
+                strokeWidth={2}
+                dot={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </Panel>
 
-      <Panel title="Tokens by model">
-        <ResponsiveContainer width="100%" height={260}>
-          <BarChart data={(byModel || []).map((r) => ({ ...r, key: `${r.provider}/${r.model}` }))}>
-            <CartesianGrid stroke="#27272a" strokeDasharray="3 3" />
-            <XAxis dataKey="key" stroke="#71717a" fontSize={12} />
-            <YAxis stroke="#71717a" fontSize={12} />
-            <Tooltip contentStyle={tooltipStyle} />
-            <Legend />
-            <Bar dataKey="prompt_tokens" stackId="t" fill="#3b82f6" />
-            <Bar dataKey="completion_tokens" stackId="t" fill="#10b981" />
-          </BarChart>
-        </ResponsiveContainer>
-      </Panel>
+        <Panel title="Tokens by model" className={styles.spanWide}>
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart
+              data={(byModel || []).map((r) => ({
+                ...r,
+                key: `${r.provider}/${r.model}`,
+              }))}
+              margin={chartMargin}
+            >
+              <CartesianGrid stroke={CHART.grid} vertical={false} />
+              <XAxis dataKey="key" {...axisProps} />
+              <YAxis {...axisProps} />
+              <Tooltip content={<ChartTooltip />} cursor={{ fill: "rgba(255,255,255,0.04)" }} />
+              <Legend wrapperStyle={legendStyle} />
+              <Bar
+                dataKey="prompt_tokens"
+                name="prompt"
+                stackId="t"
+                fill={CHART.requests}
+                radius={[0, 0, 0, 0]}
+              />
+              <Bar
+                dataKey="completion_tokens"
+                name="completion"
+                stackId="t"
+                fill={CHART.completion}
+                radius={[6, 6, 0, 0]}
+              />
+            </BarChart>
+          </ResponsiveContainer>
+        </Panel>
 
-      <Panel title="Per-model breakdown">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-zinc-500 text-left">
-                <th className="py-2 pr-4">Provider</th>
-                <th className="py-2 pr-4">Model</th>
-                <th className="py-2 pr-4">Requests</th>
-                <th className="py-2 pr-4">Errors</th>
-                <th className="py-2 pr-4">p50</th>
-                <th className="py-2 pr-4">p95</th>
-                <th className="py-2 pr-4">Tokens</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(byModel || []).map((r, i) => (
-                <tr key={i} className="border-t border-zinc-800">
-                  <td className="py-2 pr-4">{r.provider}</td>
-                  <td className="py-2 pr-4">{r.model}</td>
-                  <td className="py-2 pr-4">{r.requests}</td>
-                  <td className="py-2 pr-4">{r.errors}</td>
-                  <td className="py-2 pr-4">{r.p50} ms</td>
-                  <td className="py-2 pr-4">{r.p95} ms</td>
-                  <td className="py-2 pr-4">
-                    {(r.prompt_tokens || 0) + (r.completion_tokens || 0)}
-                  </td>
+        <Panel title="Per-model breakdown" className={styles.spanWide}>
+          <div className={styles.tableWrap}>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th>Provider</th>
+                  <th>Model</th>
+                  <th className={styles.num}>Requests</th>
+                  <th className={styles.num}>Errors</th>
+                  <th className={styles.num}>p50</th>
+                  <th className={styles.num}>p95</th>
+                  <th className={styles.num}>Tokens</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Panel>
+              </thead>
+              <tbody>
+                {(byModel || []).length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className={styles.tableEmpty}>
+                      No data yet — send a message to populate metrics.
+                    </td>
+                  </tr>
+                ) : (
+                  (byModel || []).map((r, i) => (
+                    <tr key={i}>
+                      <td>{r.provider}</td>
+                      <td className={styles.mono}>{r.model}</td>
+                      <td className={styles.num}>{r.requests}</td>
+                      <td className={cx(styles.num, r.errors > 0 && styles.errCell)}>
+                        {r.errors}
+                      </td>
+                      <td className={styles.num}>{r.p50} ms</td>
+                      <td className={styles.num}>{r.p95} ms</td>
+                      <td className={styles.num}>
+                        {(r.prompt_tokens || 0) + (r.completion_tokens || 0)}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+      </div>
     </div>
   );
 }
+
+/* --- Presentational helpers --- */
+
+function fmt(n: number | undefined): string {
+  return (n ?? 0).toLocaleString();
+}
+
+const ACCENTS = {
+  indigo: styles.accentIndigo,
+  violet: styles.accentViolet,
+  green: styles.accentGreen,
+  amber: styles.accentAmber,
+  red: styles.accentRed,
+} as const;
 
 function Stat({
   label,
   value,
-  accent = "default",
+  accent,
 }: {
   label: string;
   value: string | number;
-  accent?: "default" | "red";
+  accent: keyof typeof ACCENTS;
 }) {
   return (
-    <div className="border border-zinc-800 rounded-xl p-4">
-      <div className="text-xs uppercase tracking-wide text-zinc-500">{label}</div>
-      <div
-        className={`mt-1 text-2xl font-semibold ${
-          accent === "red" ? "text-red-400" : "text-zinc-100"
-        }`}
-      >
-        {value}
-      </div>
+    <div className={cx(styles.stat, ACCENTS[accent])}>
+      <span className={styles.statBar} aria-hidden />
+      <div className={styles.statLabel}>{label}</div>
+      <div className={styles.statValue}>{value}</div>
     </div>
   );
 }
 
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+function Panel({
+  title,
+  className,
+  children,
+}: {
+  title: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="border border-zinc-800 rounded-xl p-4">
-      <div className="text-sm font-medium mb-3">{title}</div>
+    <section className={cx(styles.panel, className)}>
+      <h2 className={styles.panelTitle}>{title}</h2>
       {children}
+    </section>
+  );
+}
+
+function ChartTooltip({
+  active,
+  payload,
+  label,
+  unit,
+}: {
+  active?: boolean;
+  payload?: Array<{ name: string; value: number; color: string }>;
+  label?: string;
+  unit?: string;
+}) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className={styles.tooltip}>
+      <div className={styles.tooltipLabel}>{label}</div>
+      {payload.map((p) => (
+        <div key={p.name} className={styles.tooltipRow}>
+          <span className={styles.tooltipKey}>
+            <span
+              className={styles.tooltipSwatch}
+              style={{ background: p.color }}
+            />
+            {p.name}
+          </span>
+          <span className={styles.tooltipVal}>
+            {p.value?.toLocaleString()}
+            {unit ? ` ${unit}` : ""}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }
 
-const tooltipStyle = {
-  backgroundColor: "#0b0d10",
-  border: "1px solid #27272a",
-  borderRadius: 8,
-  fontSize: 12,
-};
+const chartMargin = { top: 8, right: 8, left: -12, bottom: 0 };
+const axisProps = {
+  stroke: CHART.axis,
+  fontSize: 11,
+  tickLine: false,
+  axisLine: false,
+} as const;
+const cursorStyle = { stroke: "rgba(255,255,255,0.14)", strokeWidth: 1 };
+const legendStyle = { fontSize: 12, paddingTop: 8 };

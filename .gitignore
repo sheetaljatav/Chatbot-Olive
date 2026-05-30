@@ -13,6 +13,7 @@ node_modules/
 .next/
 out/
 .turbo/
+next-env.d.ts
 
 # Env / secrets
 .env
@@ -33,3 +34,6 @@ coverage/
 
 # Docker volumes
 infra/.volumes/
+
+# Assignment / reference docs (not part of the codebase)
+*.pdf
